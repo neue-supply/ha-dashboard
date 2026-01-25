@@ -4,8 +4,8 @@ FROM $BUILD_FROM
 # Install nginx
 RUN apk add --no-cache nginx
 
-# Copy configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy configuration template
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY run.sh /run.sh
 
 # Make run script executable

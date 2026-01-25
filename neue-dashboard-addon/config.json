@@ -1,6 +1,6 @@
 {
   "name": "Neue Dashboard",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "slug": "neue-dashboard-addon",
   "description": "Custom Home Assistant dashboard with MQTT control",
   "url": "https://github.com/neue-supply/ha-dashboard",
@@ -16,9 +16,21 @@
   "boot": "auto",
   "map": ["config:ro"],
   "options": {
-    "document_root": "/config/www/neue-dashboard"
+    "document_root": "/config/www/neue-dashboard",
+    "mqtt_server": "ws://10.0.30.30:1884",
+    "wled_devices": [
+      { "name": "kitchen", "url": "ws://10.0.30.95:80/ws" },
+      { "name": "bedroom", "url": "ws://10.0.30.61:80/ws" }
+    ]
   },
   "schema": {
-    "document_root": "str"
+    "document_root": "str",
+    "mqtt_server": "str",
+    "wled_devices": [
+      {
+        "name": "str",
+        "url": "str"
+      }
+    ]
   }
 }
