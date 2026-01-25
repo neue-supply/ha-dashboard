@@ -66,7 +66,7 @@ HA_LOCATION="
 
         # Home Assistant WebSocket proxy
         location /ha/websocket {
-            proxy_pass ${HA_URL}/websocket;
+            proxy_pass ${HA_URL}/api/websocket;
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection \$connection_upgrade;
