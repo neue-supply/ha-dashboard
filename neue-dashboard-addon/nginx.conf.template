@@ -54,6 +54,8 @@ http {
             proxy_send_timeout 86400;
         }
 
+__GO2RTC_LOCATION__
+
 __WLED_LOCATIONS__
     }
 }
