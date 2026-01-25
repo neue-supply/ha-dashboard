@@ -1,0 +1,24 @@
+{
+  "name": "Neue Dashboard",
+  "version": "1.0.0",
+  "slug": "neue-dashboard-addon",
+  "description": "Custom Home Assistant dashboard with MQTT control",
+  "url": "https://github.com/neue-supply/ha-dashboard",
+  "arch": ["aarch64", "amd64", "armv7"],
+  "init": false,
+  "ingress": true,
+  "ingress_port": 8099,
+  "ingress_stream": true,
+  "panel_icon": "mdi:view-dashboard",
+  "panel_title": "Neue Dashboard",
+  "panel_admin": false,
+  "startup": "application",
+  "boot": "auto",
+  "map": ["config:ro"],
+  "options": {
+    "document_root": "/config/www/neue-dashboard"
+  },
+  "schema": {
+    "document_root": "str"
+  }
+}
