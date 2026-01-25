@@ -53,6 +53,12 @@ mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 # Generate HA API/WebSocket proxy location
 SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN:-}"
 HA_LOCATION="
+        # Home Assistant token endpoint (for WebSocket auth)
+        location = /ha/token {
+            default_type text/plain;
+            return 200 '${SUPERVISOR_TOKEN}';
+        }
+
         # Home Assistant API proxy
         location /ha/api/ {
             proxy_pass ${HA_URL}/api/;
@@ -70,7 +76,6 @@ HA_LOCATION="
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection \$connection_upgrade;
-            proxy_set_header Authorization \"Bearer ${SUPERVISOR_TOKEN}\";
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
