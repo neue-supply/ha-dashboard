@@ -5,6 +5,7 @@ set -e
 DOCUMENT_ROOT=$(bashio::config 'document_root')
 MQTT_SERVER=$(bashio::config 'mqtt_server')
 GO2RTC_URL=$(bashio::config 'go2rtc_url' '')
+HA_URL=$(bashio::config 'ha_url' 'http://supervisor/core')
 
 # Convert ws:// to http:// for nginx proxy_pass (WebSocket upgrade happens via headers)
 MQTT_PROXY_URL=$(echo "$MQTT_SERVER" | sed 's|^ws://|http://|' | sed 's|^wss://|https://|')
@@ -13,6 +14,7 @@ echo "Starting Neue Dashboard"
 echo "Document root: ${DOCUMENT_ROOT}"
 echo "MQTT server: ${MQTT_SERVER} -> ${MQTT_PROXY_URL}"
 echo "go2rtc URL: ${GO2RTC_URL}"
+echo "HA URL: ${HA_URL}"
 
 # Start with the template
 cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
@@ -46,6 +48,40 @@ fi
 
 # Insert go2rtc location into nginx config
 awk -v go2rtc="$GO2RTC_LOCATION" '{gsub(/__GO2RTC_LOCATION__/, go2rtc); print}' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp
+mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
+
+# Generate HA API/WebSocket proxy location
+SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN:-}"
+HA_LOCATION="
+        # Home Assistant API proxy
+        location /ha/api/ {
+            proxy_pass ${HA_URL}/api/;
+            proxy_http_version 1.1;
+            proxy_set_header Authorization \"Bearer ${SUPERVISOR_TOKEN}\";
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+        }
+
+        # Home Assistant WebSocket proxy
+        location /ha/websocket {
+            proxy_pass ${HA_URL}/websocket;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection \$connection_upgrade;
+            proxy_set_header Authorization \"Bearer ${SUPERVISOR_TOKEN}\";
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_read_timeout 86400;
+            proxy_send_timeout 86400;
+        }
+"
+
+# Insert HA location into nginx config
+awk -v ha="$HA_LOCATION" '{gsub(/__HA_LOCATION__/, ha); print}' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp
 mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 
 # Generate WLED proxy locations
