@@ -5,7 +5,7 @@ set -e
 DOCUMENT_ROOT=$(bashio::config 'document_root')
 
 # Update nginx config with document root
-sed -i "s|set \$document_root .*|set \$document_root ${DOCUMENT_ROOT};|g" /etc/nginx/nginx.conf
+sed -i "s|__DOCUMENT_ROOT__|${DOCUMENT_ROOT}|g" /etc/nginx/nginx.conf
 
 echo "Starting Neue Dashboard"
 echo "Document root: ${DOCUMENT_ROOT}"
