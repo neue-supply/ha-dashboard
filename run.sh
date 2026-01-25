@@ -29,8 +29,8 @@ sed -i "s|__MQTT_SERVER__|${MQTT_PROXY_URL}|g" /etc/nginx/nginx.conf
 GO2RTC_LOCATION=""
 if [ -n "${GO2RTC_URL}" ]; then
     GO2RTC_LOCATION="
-        # go2rtc camera streams proxy
-        location /go2rtc/ {
+        # go2rtc camera streams proxy (^~ stops regex matching for .js/.css files)
+        location ^~ /go2rtc/ {
             proxy_pass ${GO2RTC_URL}/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
