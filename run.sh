@@ -125,5 +125,9 @@ mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 echo "Generated nginx config:"
 cat /etc/nginx/nginx.conf
 
+# Start the dashboard config sync server (Python, 127.0.0.1:8100) in the background.
+# nginx proxies /api/config* here. Persistent storage lives at /data/dashboard-config.json.
+python3 /config-server.py &
+
 # Start nginx in foreground
 exec nginx -g "daemon off;"
