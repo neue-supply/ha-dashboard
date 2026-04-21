@@ -98,11 +98,17 @@ for device in $(bashio::config 'wled_devices|keys'); do
     # Convert ws:// to http:// for nginx proxy_pass
     PROXY_URL=$(echo "$URL" | sed 's|^ws://|http://|' | sed 's|^wss://|https://|')
 
-    echo "WLED device: ${NAME} -> ${URL} (proxy: ${PROXY_URL})"
+    # nginx `location` can't contain spaces or many special chars — slugify
+    # the friendly name so the path is URL/nginx-safe:
+    #   "Kitchen Counter Light" -> "kitchen-counter-light"
+    # The app-side devices.json should use this slug as its proxyPath.
+    SLUG=$(echo "$NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\+/-/g' | sed 's/^-\+//;s/-\+$//')
+
+    echo "WLED device: ${NAME} (slug: ${SLUG}) -> ${URL} (proxy: ${PROXY_URL})"
 
     WLED_LOCATIONS="${WLED_LOCATIONS}
-        # WLED proxy: ${NAME}
-        location /wled/${NAME} {
+        # WLED proxy: ${NAME} (slug: ${SLUG})
+        location /wled/${SLUG} {
             proxy_pass ${PROXY_URL};
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
