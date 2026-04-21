@@ -29,12 +29,20 @@ http {
         root __DOCUMENT_ROOT__;
         index index.html;
 
+        # Never cache index.html — points to hashed assets that change each build
+        location = /index.html {
+            add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+            add_header Pragma "no-cache" always;
+            expires 0;
+            try_files $uri =404;
+        }
+
         # Static files - SPA routing
         location / {
             try_files $uri $uri/ /index.html;
         }
 
-        # Cache static assets
+        # Cache hashed static assets forever (filename hashes guarantee freshness)
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";

@@ -1,6 +1,6 @@
 {
   "name": "Neue Dashboard",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "slug": "neue-dashboard-addon",
   "description": "Custom Home Assistant dashboard with MQTT control",
   "url": "https://github.com/neue-supply/ha-dashboard",
