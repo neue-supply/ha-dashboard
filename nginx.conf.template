@@ -82,7 +82,5 @@ http {
 __GO2RTC_LOCATION__
 
 __HA_LOCATION__
-
-__WLED_LOCATIONS__
     }
 }

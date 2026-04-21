@@ -89,45 +89,6 @@ HA_LOCATION="
 awk -v ha="$HA_LOCATION" '{gsub(/__HA_LOCATION__/, ha); print}' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp
 mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 
-# Generate WLED proxy locations
-WLED_LOCATIONS=""
-for device in $(bashio::config 'wled_devices|keys'); do
-    NAME=$(bashio::config "wled_devices[${device}].name")
-    URL=$(bashio::config "wled_devices[${device}].url")
-
-    # Convert ws:// to http:// for nginx proxy_pass
-    PROXY_URL=$(echo "$URL" | sed 's|^ws://|http://|' | sed 's|^wss://|https://|')
-
-    # nginx `location` can't contain spaces or many special chars — slugify
-    # the friendly name so the path is URL/nginx-safe:
-    #   "Kitchen Counter Light" -> "kitchen-counter-light"
-    # The app-side devices.json should use this slug as its proxyPath.
-    SLUG=$(echo "$NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\+/-/g' | sed 's/^-\+//;s/-\+$//')
-
-    echo "WLED device: ${NAME} (slug: ${SLUG}) -> ${URL} (proxy: ${PROXY_URL})"
-
-    WLED_LOCATIONS="${WLED_LOCATIONS}
-        # WLED proxy: ${NAME} (slug: ${SLUG})
-        location /wled/${SLUG} {
-            proxy_pass ${PROXY_URL};
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
-            proxy_set_header Connection \$connection_upgrade;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
-            proxy_read_timeout 86400;
-            proxy_send_timeout 86400;
-        }
-"
-done
-
-# Insert WLED locations into nginx config
-# Use awk to replace the placeholder since sed has issues with multiline
-awk -v wled="$WLED_LOCATIONS" '{gsub(/__WLED_LOCATIONS__/, wled); print}' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp
-mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
-
 echo "Generated nginx config:"
 cat /etc/nginx/nginx.conf
 
