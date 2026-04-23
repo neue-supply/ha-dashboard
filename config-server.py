@@ -57,8 +57,32 @@ _legacy_subs: "list[queue.Queue[str]]" = []
 
 def _ensure_dashboards_dir() -> None:
     DASHBOARDS_DIR.mkdir(parents=True, exist_ok=True)
-    if not INDEX_PATH.exists():
-        _write_json_atomic(INDEX_PATH, {"dashboards": [], "activeDashboardFallback": ""})
+    idx = _read_json(INDEX_PATH) if INDEX_PATH.exists() else None
+    if not isinstance(idx, dict):
+        idx = None
+    if idx is None:
+        idx = {"dashboards": [], "activeDashboardFallback": ""}
+        _write_json_atomic(INDEX_PATH, idx)
+    if not idx.get("dashboards"):
+        # Invariant: at least one dashboard must always exist.
+        default_id = "home"
+        default = {
+            "id": default_id,
+            "name": "Home",
+            "icon": "ph:House",
+            "pages": [],
+            "pageOrder": [],
+            "pageCards": {},
+            "deviceIcons": {},
+            "defaultPage": "",
+            "layout": {},
+        }
+        _write_json_atomic(DASHBOARDS_DIR / f"{default_id}.json", default)
+        idx = {
+            "dashboards": [{"id": default_id, "name": "Home", "icon": "ph:House"}],
+            "activeDashboardFallback": default_id,
+        }
+        _write_json_atomic(INDEX_PATH, idx)
 
 
 def _read_bytes(path: Path) -> bytes:
@@ -392,6 +416,13 @@ class Handler(BaseHTTPRequestHandler):
         if not _valid_id(dashboard_id):
             self.send_error(400, "Invalid id")
             return
+        # Invariant: at least one dashboard must remain.
+        with _index_lock:
+            idx = _read_json(INDEX_PATH) or {"dashboards": [], "activeDashboardFallback": ""}
+            entries = idx.get("dashboards", []) if isinstance(idx, dict) else []
+            if len(entries) <= 1 and any(e.get("id") == dashboard_id for e in entries):
+                self.send_error(409, "Cannot delete the last dashboard")
+                return
         path = DASHBOARDS_DIR / f"{dashboard_id}.json"
         with _file_lock:
             if path.exists():
