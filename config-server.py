@@ -46,6 +46,7 @@ HEARTBEAT_SECONDS = 25
 ID_RE = re.compile(r"^[a-z0-9-]+$")
 
 _file_lock = threading.Lock()
+_index_lock = threading.Lock()
 
 # Per-dashboard SSE subscribers: dashboardId -> list of queues.
 _sub_lock = threading.Lock()
@@ -152,28 +153,30 @@ def _unregister_legacy_sub(q: "queue.Queue[str]") -> None:
 
 
 def _index_upsert(dashboard_id: str, name: str, icon: str) -> None:
-    idx = _read_json(INDEX_PATH) or {"dashboards": [], "activeDashboardFallback": ""}
-    entries = idx.get("dashboards", [])
-    for e in entries:
-        if e.get("id") == dashboard_id:
-            e["name"] = name
-            e["icon"] = icon
-            break
-    else:
-        entries.append({"id": dashboard_id, "name": name, "icon": icon})
-    idx["dashboards"] = entries
-    if not idx.get("activeDashboardFallback"):
-        idx["activeDashboardFallback"] = dashboard_id
-    _write_json_atomic(INDEX_PATH, idx)
+    with _index_lock:
+        idx = _read_json(INDEX_PATH) or {"dashboards": [], "activeDashboardFallback": ""}
+        entries = idx.get("dashboards", [])
+        for e in entries:
+            if e.get("id") == dashboard_id:
+                e["name"] = name
+                e["icon"] = icon
+                break
+        else:
+            entries.append({"id": dashboard_id, "name": name, "icon": icon})
+        idx["dashboards"] = entries
+        if not idx.get("activeDashboardFallback"):
+            idx["activeDashboardFallback"] = dashboard_id
+        _write_json_atomic(INDEX_PATH, idx)
 
 
 def _index_remove(dashboard_id: str) -> None:
-    idx = _read_json(INDEX_PATH) or {"dashboards": [], "activeDashboardFallback": ""}
-    entries = [e for e in idx.get("dashboards", []) if e.get("id") != dashboard_id]
-    idx["dashboards"] = entries
-    if idx.get("activeDashboardFallback") == dashboard_id:
-        idx["activeDashboardFallback"] = entries[0]["id"] if entries else ""
-    _write_json_atomic(INDEX_PATH, idx)
+    with _index_lock:
+        idx = _read_json(INDEX_PATH) or {"dashboards": [], "activeDashboardFallback": ""}
+        entries = [e for e in idx.get("dashboards", []) if e.get("id") != dashboard_id]
+        idx["dashboards"] = entries
+        if idx.get("activeDashboardFallback") == dashboard_id:
+            idx["activeDashboardFallback"] = entries[0]["id"] if entries else ""
+        _write_json_atomic(INDEX_PATH, idx)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -182,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # Dispatching ---------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802
-        path = self.path
+        path = self.path.split("?", 1)[0]
         if path == "/api/dashboards":
             return self._get_index()
         m = re.match(r"^/api/dashboards/([a-z0-9-]+)$", path)
@@ -198,25 +201,29 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404, "Not Found")
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path == "/api/dashboards":
+        path = self.path.split("?", 1)[0]
+        if path == "/api/dashboards":
             return self._post_dashboard()
-        if self.path == "/api/config":
+        if path == "/api/config":
             return self._legacy_post_config()
         self.send_error(404, "Not Found")
 
     def do_PUT(self) -> None:  # noqa: N802
-        m = re.match(r"^/api/dashboards/([a-z0-9-]+)$", self.path)
+        path = self.path.split("?", 1)[0]
+        m = re.match(r"^/api/dashboards/([a-z0-9-]+)$", path)
         if m:
             return self._put_dashboard(m.group(1))
         self.send_error(404, "Not Found")
 
     def do_PATCH(self) -> None:  # noqa: N802
-        if self.path == "/api/dashboards":
+        path = self.path.split("?", 1)[0]
+        if path == "/api/dashboards":
             return self._patch_index()
         self.send_error(404, "Not Found")
 
     def do_DELETE(self) -> None:  # noqa: N802
-        m = re.match(r"^/api/dashboards/([a-z0-9-]+)$", self.path)
+        path = self.path.split("?", 1)[0]
+        m = re.match(r"^/api/dashboards/([a-z0-9-]+)$", path)
         if m:
             return self._delete_dashboard(m.group(1))
         self.send_error(404, "Not Found")
@@ -265,12 +272,38 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(patch, dict):
             self.send_error(400, "Body must be an object")
             return
-        _ensure_dashboards_dir()
-        current = _read_json(INDEX_PATH) or {"dashboards": [], "activeDashboardFallback": ""}
-        if not isinstance(current, dict):
-            current = {"dashboards": [], "activeDashboardFallback": ""}
-        current.update(patch)
-        _write_json_atomic(INDEX_PATH, current)
+        # Whitelist and type-check. Only the two keys the spec lists are accepted.
+        allowed_keys = {"dashboards", "activeDashboardFallback"}
+        unknown = set(patch.keys()) - allowed_keys
+        if unknown:
+            self.send_error(400, f"Unknown keys: {sorted(unknown)}")
+            return
+        if "activeDashboardFallback" in patch and not isinstance(
+            patch["activeDashboardFallback"], str
+        ):
+            self.send_error(400, "activeDashboardFallback must be a string")
+            return
+        if "dashboards" in patch:
+            entries = patch["dashboards"]
+            if not isinstance(entries, list):
+                self.send_error(400, "dashboards must be an array")
+                return
+            for e in entries:
+                if not (
+                    isinstance(e, dict)
+                    and isinstance(e.get("id"), str)
+                    and isinstance(e.get("name"), str)
+                    and isinstance(e.get("icon"), str)
+                ):
+                    self.send_error(400, "dashboards entries must be {id,name,icon} strings")
+                    return
+        with _index_lock:
+            _ensure_dashboards_dir()
+            current = _read_json(INDEX_PATH) or {"dashboards": [], "activeDashboardFallback": ""}
+            if not isinstance(current, dict):
+                current = {"dashboards": [], "activeDashboardFallback": ""}
+            current.update(patch)
+            _write_json_atomic(INDEX_PATH, current)
         self.send_response(204)
         self.end_headers()
 
