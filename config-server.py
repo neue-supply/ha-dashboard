@@ -2,8 +2,8 @@
 """
 Neue Dashboard config server.
 
-Runs on 127.0.0.1:8100 inside the addon. nginx proxies /api/dashboards* and
-(legacy) /api/config* to this server.
+Runs on 127.0.0.1:8100 inside the addon. nginx proxies /api/dashboards* to
+this server.
 
 Dashboards API (multi-dashboard):
   GET    /api/dashboards                  → index.json
@@ -14,15 +14,9 @@ Dashboards API (multi-dashboard):
   DELETE /api/dashboards/:id              → delete file + remove from index
   GET    /api/dashboards/:id/stream       → SSE per-dashboard change events
 
-Legacy single-config API (kept until app cutover):
-  GET  /api/config                        → /data/dashboard-config.json
-  POST /api/config                        → writes it
-  GET  /api/config/stream                 → SSE for any legacy config change
-
 Storage:
   /data/dashboards/index.json
   /data/dashboards/:id.json
-  /data/dashboard-config.json  (legacy — never deleted by this server)
 
 Auth handled upstream by HA ingress — binds 127.0.0.1 only.
 """
@@ -39,7 +33,6 @@ from pathlib import Path
 
 DASHBOARDS_DIR = Path("/data/dashboards")
 INDEX_PATH = DASHBOARDS_DIR / "index.json"
-LEGACY_CONFIG_PATH = Path("/data/dashboard-config.json")
 
 MAX_BODY_BYTES = 1 * 1024 * 1024
 HEARTBEAT_SECONDS = 25
@@ -51,8 +44,6 @@ _index_lock = threading.Lock()
 # Per-dashboard SSE subscribers: dashboardId -> list of queues.
 _sub_lock = threading.Lock()
 _subs_by_dashboard: "dict[str, list[queue.Queue[str]]]" = {}
-# Legacy single-config subscribers.
-_legacy_subs: "list[queue.Queue[str]]" = []
 
 
 def _new_dashboard(
@@ -140,17 +131,6 @@ def _broadcast_dashboard(dashboard_id: str) -> None:
             pass
 
 
-def _broadcast_legacy() -> None:
-    payload = f"event: update\ndata: {int(time.time() * 1000)}\n\n"
-    with _sub_lock:
-        subs = list(_legacy_subs)
-    for q in subs:
-        try:
-            q.put_nowait(payload)
-        except queue.Full:
-            pass
-
-
 def _register_dashboard_sub(dashboard_id: str) -> "queue.Queue[str]":
     q: "queue.Queue[str]" = queue.Queue(maxsize=16)
     with _sub_lock:
@@ -169,21 +149,6 @@ def _unregister_dashboard_sub(dashboard_id: str, q: "queue.Queue[str]") -> None:
             pass
         if not lst:
             _subs_by_dashboard.pop(dashboard_id, None)
-
-
-def _register_legacy_sub() -> "queue.Queue[str]":
-    q: "queue.Queue[str]" = queue.Queue(maxsize=16)
-    with _sub_lock:
-        _legacy_subs.append(q)
-    return q
-
-
-def _unregister_legacy_sub(q: "queue.Queue[str]") -> None:
-    with _sub_lock:
-        try:
-            _legacy_subs.remove(q)
-        except ValueError:
-            pass
 
 
 def _index_upsert(dashboard_id: str, name: str, icon: str) -> None:
@@ -228,18 +193,12 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/dashboards/([a-z0-9-]+)/stream$", path)
         if m:
             return self._stream_dashboard(m.group(1))
-        if path == "/api/config":
-            return self._legacy_get_config()
-        if path == "/api/config/stream":
-            return self._legacy_stream()
         self.send_error(404, "Not Found")
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if path == "/api/dashboards":
             return self._post_dashboard()
-        if path == "/api/config":
-            return self._legacy_post_config()
         self.send_error(404, "Not Found")
 
     def do_PUT(self) -> None:  # noqa: N802
@@ -440,28 +399,6 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._stream_loop(_register_dashboard_sub(dashboard_id),
                           lambda q: _unregister_dashboard_sub(dashboard_id, q))
-
-    # Legacy handlers (kept transitionally) -------------------------------
-    def _legacy_get_config(self) -> None:
-        body = _read_bytes(LEGACY_CONFIG_PATH) or b"null"
-        self._send_json(200, body)
-
-    def _legacy_post_config(self) -> None:
-        body = self._read_body()
-        if body is None:
-            return
-        try:
-            json.loads(body)
-        except json.JSONDecodeError:
-            self.send_error(400, "Invalid JSON")
-            return
-        _write_bytes_atomic(LEGACY_CONFIG_PATH, body)
-        _broadcast_legacy()
-        self.send_response(204)
-        self.end_headers()
-
-    def _legacy_stream(self) -> None:
-        self._stream_loop(_register_legacy_sub(), _unregister_legacy_sub)
 
     # SSE helper ---------------------------------------------------------
     def _stream_loop(self, q: "queue.Queue[str]", unregister) -> None:
