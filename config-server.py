@@ -55,6 +55,26 @@ _subs_by_dashboard: "dict[str, list[queue.Queue[str]]]" = {}
 _legacy_subs: "list[queue.Queue[str]]" = []
 
 
+def _new_dashboard(
+    dashboard_id: str, name: str, icon: str
+) -> "dict[str, object]":
+    """Build a fresh dashboard config. Invariant: every dashboard starts
+    with exactly one page so the UI never has to handle a zero-page state.
+    """
+    page_id = "overview"
+    return {
+        "id": dashboard_id,
+        "name": name,
+        "icon": icon,
+        "pages": [{"id": page_id, "name": "Overview", "icon": "ph:Layout"}],
+        "pageOrder": [page_id],
+        "pageCards": {page_id: []},
+        "deviceIcons": {},
+        "defaultPage": page_id,
+        "layout": {},
+    }
+
+
 def _ensure_dashboards_dir() -> None:
     DASHBOARDS_DIR.mkdir(parents=True, exist_ok=True)
     idx = _read_json(INDEX_PATH) if INDEX_PATH.exists() else None
@@ -66,17 +86,7 @@ def _ensure_dashboards_dir() -> None:
     if not idx.get("dashboards"):
         # Invariant: at least one dashboard must always exist.
         default_id = "home"
-        default = {
-            "id": default_id,
-            "name": "Home",
-            "icon": "ph:House",
-            "pages": [],
-            "pageOrder": [],
-            "pageCards": {},
-            "deviceIcons": {},
-            "defaultPage": "",
-            "layout": {},
-        }
+        default = _new_dashboard(default_id, "Home", "ph:House")
         _write_json_atomic(DASHBOARDS_DIR / f"{default_id}.json", default)
         idx = {
             "dashboards": [{"id": default_id, "name": "Home", "icon": "ph:House"}],
@@ -396,21 +406,13 @@ class Handler(BaseHTTPRequestHandler):
         if path.exists():
             self.send_error(409, "Dashboard already exists")
             return
-        empty = {
-            "id": dashboard_id,
-            "name": name,
-            "icon": icon,
-            "pages": [],
-            "pageOrder": [],
-            "pageCards": {},
-            "deviceIcons": {},
-            "defaultPage": "",
-            "layout": {},
-        }
-        _write_json_atomic(path, empty)
+        dashboard = _new_dashboard(dashboard_id, name, icon)
+        _write_json_atomic(path, dashboard)
         _index_upsert(dashboard_id, name, icon)
         _broadcast_dashboard(dashboard_id)
-        self._send_json(201, json.dumps(empty, separators=(",", ":")).encode("utf-8"))
+        self._send_json(
+            201, json.dumps(dashboard, separators=(",", ":")).encode("utf-8")
+        )
 
     def _delete_dashboard(self, dashboard_id: str) -> None:
         if not _valid_id(dashboard_id):
