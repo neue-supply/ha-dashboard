@@ -1,6 +1,6 @@
 {
   "name": "Neue Dashboard",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "slug": "neue-dashboard-addon",
   "description": "Custom Home Assistant dashboard with MQTT control",
   "url": "https://github.com/neue-supply/ha-dashboard",
@@ -9,6 +9,12 @@
   "ingress": true,
   "ingress_port": 8099,
   "ingress_stream": true,
+  "ports": {
+    "8099/tcp": 8200
+  },
+  "ports_description": {
+    "8099/tcp": "Direct LAN access — unique per-dashboard URLs"
+  },
   "startup": "application",
   "boot": "auto",
   "homeassistant_api": true,
