@@ -82,6 +82,8 @@ http {
 
 __GO2RTC_LOCATION__
 
+__MA_LOCATION__
+
 __HA_LOCATION__
     }
 }

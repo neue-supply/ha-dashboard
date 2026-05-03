@@ -1,6 +1,6 @@
 {
   "name": "Neue Dashboard",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "slug": "neue-dashboard-addon",
   "description": "Custom Home Assistant dashboard with MQTT control",
   "url": "https://github.com/neue-supply/ha-dashboard",
@@ -23,12 +23,14 @@
     "document_root": "/config/www/neue-dashboard",
     "mqtt_server": "ws://10.0.30.30:1884",
     "go2rtc_url": "http://10.0.30.33:1984",
-    "ha_url": "http://supervisor/core"
+    "ha_url": "http://supervisor/core",
+    "music_assistant_url": "http://10.0.30.30:8200"
   },
   "schema": {
     "document_root": "str",
     "mqtt_server": "str",
     "go2rtc_url": "str?",
-    "ha_url": "str?"
+    "ha_url": "str?",
+    "music_assistant_url": "str?"
   }
 }

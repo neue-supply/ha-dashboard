@@ -6,6 +6,7 @@ DOCUMENT_ROOT=$(bashio::config 'document_root')
 MQTT_SERVER=$(bashio::config 'mqtt_server')
 GO2RTC_URL=$(bashio::config 'go2rtc_url' '')
 HA_URL=$(bashio::config 'ha_url' 'http://supervisor/core')
+MUSIC_ASSISTANT_URL=$(bashio::config 'music_assistant_url' '')
 
 # Convert ws:// to http:// for nginx proxy_pass (WebSocket upgrade happens via headers)
 MQTT_PROXY_URL=$(echo "$MQTT_SERVER" | sed 's|^ws://|http://|' | sed 's|^wss://|https://|')
@@ -15,6 +16,7 @@ echo "Document root: ${DOCUMENT_ROOT}"
 echo "MQTT server: ${MQTT_SERVER} -> ${MQTT_PROXY_URL}"
 echo "go2rtc URL: ${GO2RTC_URL}"
 echo "HA URL: ${HA_URL}"
+echo "Music Assistant URL: ${MUSIC_ASSISTANT_URL}"
 
 # Start with the template
 cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
@@ -48,6 +50,33 @@ fi
 
 # Insert go2rtc location into nginx config
 awk -v go2rtc="$GO2RTC_LOCATION" '{gsub(/__GO2RTC_LOCATION__/, go2rtc); print}' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp
+mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
+
+# Generate Music Assistant proxy location if configured (port 8200 by default).
+# Used by the MediaPlayerCard to fetch album art served directly by MA rather
+# than proxied through HA.
+MA_LOCATION=""
+if [ -n "${MUSIC_ASSISTANT_URL}" ]; then
+    MA_LOCATION="
+        # Music Assistant proxy (album art, image proxy, etc.)
+        location ^~ /music-assistant/ {
+            proxy_pass ${MUSIC_ASSISTANT_URL}/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection \$connection_upgrade;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_buffering off;
+            proxy_read_timeout 86400;
+            proxy_send_timeout 86400;
+        }
+"
+fi
+
+# Insert Music Assistant location into nginx config
+awk -v ma="$MA_LOCATION" '{gsub(/__MA_LOCATION__/, ma); print}' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp
 mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 
 # Generate HA API/WebSocket proxy location
