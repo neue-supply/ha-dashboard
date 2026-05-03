@@ -7,6 +7,7 @@ MQTT_SERVER=$(bashio::config 'mqtt_server')
 GO2RTC_URL=$(bashio::config 'go2rtc_url' '')
 HA_URL=$(bashio::config 'ha_url' 'http://supervisor/core')
 MUSIC_ASSISTANT_URL=$(bashio::config 'music_assistant_url' '')
+MUSIC_ASSISTANT_TOKEN=$(bashio::config 'music_assistant_token' '')
 
 # Convert ws:// to http:// for nginx proxy_pass (WebSocket upgrade happens via headers)
 MQTT_PROXY_URL=$(echo "$MQTT_SERVER" | sed 's|^ws://|http://|' | sed 's|^wss://|https://|')
@@ -17,6 +18,7 @@ echo "MQTT server: ${MQTT_SERVER} -> ${MQTT_PROXY_URL}"
 echo "go2rtc URL: ${GO2RTC_URL}"
 echo "HA URL: ${HA_URL}"
 echo "Music Assistant URL: ${MUSIC_ASSISTANT_URL}"
+echo "Music Assistant token: $([ -n "${MUSIC_ASSISTANT_TOKEN}" ] && echo '<set>' || echo '<not set>')"
 
 # Start with the template
 cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
@@ -57,7 +59,23 @@ mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 # than proxied through HA.
 MA_LOCATION=""
 if [ -n "${MUSIC_ASSISTANT_URL}" ]; then
-    MA_LOCATION="
+    # JSON-RPC API location: dashboard POSTs queue commands here. We strip
+    # any incoming Authorization header and inject the addon-stored Bearer
+    # token so the dashboard never has to handle MA credentials.
+    MA_API_LOCATION="
+        # Music Assistant JSON-RPC API (auth header injected from addon options)
+        location = /music-assistant/api {
+            proxy_pass ${MUSIC_ASSISTANT_URL}/api;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header Authorization \"Bearer ${MUSIC_ASSISTANT_TOKEN}\";
+            proxy_buffering off;
+        }
+"
+    MA_LOCATION="${MA_API_LOCATION}
         # Music Assistant proxy (album art, image proxy, etc.)
         location ^~ /music-assistant/ {
             proxy_pass ${MUSIC_ASSISTANT_URL}/;
